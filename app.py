@@ -8,22 +8,20 @@ from PIL import Image
 from io import BytesIO
 import base64
 
-# === Переменные окружения ===
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+# === Настройки ===
+TELEGRAM_TOKEN = "8026450624:AAFCN-efXeC1psLFRNsZN5uPwwgydOHPD00"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
-    raise Exception("❌ Нужно задать TELEGRAM_TOKEN и OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise Exception("Нужно задать OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-# === Flask приложение ===
 app = Flask(__name__)
 
 # === Telegram Application ===
 bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-# === Функция для обработки изображений через GPT Vision ===
+# === Функция обработки изображений через GPT Vision ===
 async def image_to_text(photo_file):
     try:
         image_bytes = BytesIO()
@@ -59,7 +57,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo = update.message.photo[-1]
             photo_file = await context.bot.get_file(photo.file_id)
             answer = await image_to_text(photo_file)
-            await update.message.reply_text(f"🧠 Ответ:\n{answer}")
+            await update.message.reply_text(f"🖼 Ответ:\n{answer}")
 
         elif update.message.text:
             text = update.message.text
@@ -69,7 +67,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 max_tokens=150
             )
             answer = response.choices[0].message.content.strip()
-            await update.message.reply_text(f"🧠 Ответ:\n{answer}")
+            await update.message.reply_text(f"💬 Ответ:\n{answer}")
 
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
@@ -86,7 +84,7 @@ loop.run_until_complete(bot_app.start())
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    # кладём апдейт в очередь thread-safe
+    # Thread-safe добавление в очередь
     future = asyncio.run_coroutine_threadsafe(bot_app.update_queue.put(update), bot_app._loop)
     future.result()
     return "ok"
