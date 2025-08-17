@@ -1,4 +1,5 @@
 import os
+import asyncio
 from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -75,6 +76,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # === Подключаем хендлер к Telegram ===
 bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
+
+# === Запускаем Telegram application в фоне ===
+asyncio.get_event_loop().create_task(bot_app.start())
 
 # === Webhook для Render ===
 @app.route("/webhook", methods=["POST"])
