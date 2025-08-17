@@ -81,20 +81,14 @@ bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
 async def init_bot():
     await bot_app.initialize()
     await bot_app.start()
-    # Запускаем updater, чтобы обработка очереди работала
-    await bot_app.updater.start_polling()  # не блокирует
 
-# Запускаем инициализацию в фоне при старте Flask
+# Инициализируем бот при старте Flask
 asyncio.get_event_loop().create_task(init_bot())
 
 # === Webhook для Render ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    # кладём update в очередь thread-safe
-    future = asyncio.run_coroutine_threadsafe(
-        bot_app.update_queue.put(update),
-        bot_app._loop
-    )
-    future.result()  # ждём пока update добавится
+    # создаём задачу для обработки апдейта
+    asyncio.create_task(bot_app.process_update(update))
     return "ok"
