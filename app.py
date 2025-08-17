@@ -77,12 +77,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === Подключаем хендлер к Telegram ===
 bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
 
-# === Запускаем Telegram application в фоне ===
-asyncio.get_event_loop().create_task(bot_app.start())
-
 # === Webhook для Render ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    bot_app.update_queue.put(update)
+    # напрямую обрабатываем апдейт без очереди
+    asyncio.run(bot_app.process_update(update))
     return "ok"
