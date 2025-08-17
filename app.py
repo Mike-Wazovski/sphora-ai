@@ -1,33 +1,39 @@
 import os
-import telegram
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from openai import OpenAI
 from PIL import Image
-import requests
 from io import BytesIO
+import base64
 
-# === ТВОИ НАСТРОЙКИ ===
-TELEGRAM_TOKEN = "8026450624:AAFCN-efXeC1psLFRNsZN5uPwwgydOHPD00"
-CHAT_ID = 1570500473
+# === Переменные окружения ===
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not OPENAI_API_KEY:
-    print("❌ OPENAI_API_KEY не задан!")
-    exit(1)
+if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
+    raise Exception("❌ Нужно задать TELEGRAM_TOKEN и OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-async def image_to_text(photo_file):
+# Flask-приложение
+app = Flask(__name__)
+
+# Telegram application
+bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
+
+# === Функция для GPT Vision ===
+async def image_to_text(photo_file, context):
     try:
         image_bytes = BytesIO()
         await photo_file.download_to_memory(out=image_bytes)
         image_bytes.seek(0)
         image = Image.open(image_bytes)
 
+        # Конвертируем в base64
         buffer = BytesIO()
         image.convert("RGB").save(buffer, format="JPEG")
-        img_base64 = buffer.getvalue().encode('base64').decode().replace('\n', '')
+        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         response = client.chat.completions.create(
             model="gpt-4-vision-preview",
@@ -36,12 +42,7 @@ async def image_to_text(photo_file):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": "Реши задачу кратко. Ответ до 100 слов."},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"image/jpeg;base64,{img_base64}"
-                            }
-                        }
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"}}
                     ]
                 }
             ],
@@ -51,15 +52,13 @@ async def image_to_text(photo_file):
     except Exception as e:
         return f"Ошибка GPT: {str(e)}"
 
+# === Хендлер сообщений ===
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.id != CHAT_ID:
-        return
-
     try:
         if update.message.photo:
             photo = update.message.photo[-1]
             photo_file = await context.bot.get_file(photo.file_id)
-            answer = await image_to_text(photo_file)
+            answer = await image_to_text(photo_file, context)
             await update.message.reply_text(f"🧠 Ответ:\n{answer}")
 
         elif update.message.text:
@@ -75,11 +74,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
-if __name__ == "__main__":
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+# Подключаем хендлер
+bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
 
-    app.add_handler(MessageHandler(filters.PHOTO, handle_message))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("✅ Бот запущен и ждёт сообщения...")
-    app.run_polling()
+# === Webhook для Render ===
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    bot_app.update_queue.put(update)
+    return "ok"
