@@ -20,7 +20,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # === Flask приложение ===
 app = Flask(__name__)
 
-# === Telegram application ===
+# === Telegram Application ===
 bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
 # === Функция для обработки изображений через GPT Vision ===
@@ -74,13 +74,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
-# === Подключаем хендлер к Telegram ===
+# === Подключаем хендлер ===
 bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
+
+# === Инициализация и запуск приложения Telegram ===
+async def init_bot():
+    await bot_app.initialize()
+    await bot_app.start()
+    # Запускаем updater, чтобы обработка очереди работала
+    await bot_app.updater.start_polling()  # не блокирует
+
+# Запускаем инициализацию в фоне при старте Flask
+asyncio.get_event_loop().create_task(init_bot())
 
 # === Webhook для Render ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    # напрямую обрабатываем апдейт без очереди
-    asyncio.run(bot_app.process_update(update))
+    # кладём update в очередь thread-safe
+    future = asyncio.run_coroutine_threadsafe(
+        bot_app.update_queue.put(update),
+        bot_app._loop
+    )
+    future.result()  # ждём пока update добавится
     return "ok"
