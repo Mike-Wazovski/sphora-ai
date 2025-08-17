@@ -16,21 +16,20 @@ if not TELEGRAM_TOKEN or not OPENAI_API_KEY:
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Flask-приложение
+# === Flask приложение ===
 app = Flask(__name__)
 
-# Telegram application
+# === Telegram application ===
 bot_app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-# === Функция для GPT Vision ===
-async def image_to_text(photo_file, context):
+# === Функция для обработки изображений через GPT Vision ===
+async def image_to_text(photo_file):
     try:
         image_bytes = BytesIO()
         await photo_file.download_to_memory(out=image_bytes)
         image_bytes.seek(0)
         image = Image.open(image_bytes)
 
-        # Конвертируем в base64
         buffer = BytesIO()
         image.convert("RGB").save(buffer, format="JPEG")
         img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -58,14 +57,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message.photo:
             photo = update.message.photo[-1]
             photo_file = await context.bot.get_file(photo.file_id)
-            answer = await image_to_text(photo_file, context)
+            answer = await image_to_text(photo_file)
             await update.message.reply_text(f"🧠 Ответ:\n{answer}")
 
         elif update.message.text:
             text = update.message.text
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": f"Кратко реши: {text}"}],
+                messages=[{"role": "user", "content": text}],
                 max_tokens=150
             )
             answer = response.choices[0].message.content.strip()
@@ -74,7 +73,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
-# Подключаем хендлер
+# === Подключаем хендлер к Telegram ===
 bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
 
 # === Webhook для Render ===
