@@ -77,18 +77,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === Подключаем хендлер ===
 bot_app.add_handler(MessageHandler(filters.ALL, handle_message))
 
-# === Инициализация и запуск приложения Telegram ===
-async def init_bot():
-    await bot_app.initialize()
-    await bot_app.start()
-
-# Инициализируем бот при старте Flask
-asyncio.get_event_loop().create_task(init_bot())
+# === Инициализация бота при старте Flask ===
+loop = asyncio.get_event_loop()
+loop.run_until_complete(bot_app.initialize())
+loop.run_until_complete(bot_app.start())
 
 # === Webhook для Render ===
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    # создаём задачу для обработки апдейта
-    asyncio.create_task(bot_app.process_update(update))
+    # кладём апдейт в очередь thread-safe
+    future = asyncio.run_coroutine_threadsafe(bot_app.update_queue.put(update), bot_app._loop)
+    future.result()
     return "ok"
